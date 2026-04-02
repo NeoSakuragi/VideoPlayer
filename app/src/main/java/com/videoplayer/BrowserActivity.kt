@@ -117,13 +117,16 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private lateinit var fileExtensions: Set<String>
+    private lateinit var navPrefs: android.content.SharedPreferences
+    private var fileMode = "video"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_smb_browser)
 
-        val mode = intent.getStringExtra(EXTRA_FILE_MODE) ?: "video"
-        fileExtensions = if (mode == "subtitle") SUBTITLE_EXTENSIONS else VIDEO_EXTENSIONS
+        fileMode = intent.getStringExtra(EXTRA_FILE_MODE) ?: "video"
+        fileExtensions = if (fileMode == "subtitle") SUBTITLE_EXTENSIONS else VIDEO_EXTENSIONS
+        navPrefs = getSharedPreferences("browser_nav", Context.MODE_PRIVATE)
 
         tvTitle = findViewById(R.id.tvTitle)
         tvSubtitle = findViewById(R.id.tvSubtitle)
@@ -143,7 +146,10 @@ class BrowserActivity : AppCompatActivity() {
         swipeRefresh.setOnRefreshListener { refresh() }
         btnBack.setOnClickListener { goBack() }
         btnAddServer.setOnClickListener { showAddDialog() }
-        showRoot()
+        findViewById<android.widget.ImageButton>(R.id.btnBrowserSettings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        restoreNavState()
     }
 
     // ── Root ─────────────────────────────────────────────────────────
@@ -206,6 +212,7 @@ class BrowserActivity : AppCompatActivity() {
         adapter.notifyDataSetChanged()
         swipeRefresh.isRefreshing = false
         if (items.isEmpty()) showEmpty("No videos or folders found")
+        saveNavState()
     }
 
     private fun selectLocalFile(fileName: String) {
@@ -243,6 +250,7 @@ class BrowserActivity : AppCompatActivity() {
             progressBar.visibility = View.GONE; swipeRefresh.isRefreshing = false
             if (items.isEmpty()) showEmpty("No servers found\nPull down to retry or tap + to add manually")
         }, 8000)
+        saveNavState()
     }
 
     private fun discoverNetBIOS() {
@@ -325,6 +333,7 @@ class BrowserActivity : AppCompatActivity() {
                     if (final2.isNotEmpty()) { for (n in final2.sorted()) items.add(Item(n, "", ItemType.SHARE)) }
                     adapter.notifyDataSetChanged(); swipeRefresh.isRefreshing = false
                     if (final2.isEmpty()) showShareNameDialog()
+                    saveNavState()
                 }
             } catch (e: Exception) {
                 runOnUiThread { progressBar.visibility = View.GONE; swipeRefresh.isRefreshing = false; showEmpty("Connection failed\n${e.message}") }
@@ -374,6 +383,7 @@ class BrowserActivity : AppCompatActivity() {
                 tvSubtitle.text = "\\\\$currentServer\\$currentShareName${if (path.isNotEmpty()) "\\$path" else ""}"; tvSubtitle.visibility = View.VISIBLE
                 emptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
                 if (items.isEmpty()) showEmpty("Empty folder")
+                saveNavState()
             }
         } catch (e: Exception) { runOnUiThread { progressBar.visibility = View.GONE; swipeRefresh.isRefreshing = false; showEmpty("Error: ${e.message}") } }
     }
@@ -449,6 +459,83 @@ class BrowserActivity : AppCompatActivity() {
     private fun showEmpty(text: String) { tvEmptyText.text = text; emptyState.visibility = View.VISIBLE }
     private fun formatSize(bytes: Long): String = when { bytes >= 1_073_741_824 -> "%.1f GB".format(bytes / 1_073_741_824.0); bytes >= 1_048_576 -> "%.1f MB".format(bytes / 1_048_576.0); bytes >= 1024 -> "%.0f KB".format(bytes / 1024.0); else -> "$bytes B" }
     private fun disconnectSmb() { try { diskShare?.close() } catch (_: Exception) {}; try { smbSession?.close() } catch (_: Exception) {}; try { smbClient?.close() } catch (_: Exception) {}; diskShare = null; smbSession = null; smbClient = null }
+    // ── Navigation state persistence ──────────────────────────────────
+
+    private fun saveNavState() {
+        val prefix = if (fileMode == "subtitle") "sub_" else ""
+        android.util.Log.d("BrowserNav", "SAVE: mode=${browseMode.name} path=$currentPath server=$currentServer share=$currentShareName")
+        navPrefs.edit()
+            .putString("${prefix}mode", browseMode.name)
+            .putString("${prefix}local_path", currentPath)
+            .putString("${prefix}smb_server", currentServer)
+            .putString("${prefix}smb_share", currentShareName)
+            .putString("${prefix}smb_path", currentPath)
+            .putString("${prefix}smb_user", currentUser)
+            .putString("${prefix}smb_pass", currentPass)
+            .apply()
+    }
+
+    private fun restoreNavState() {
+        val prefix = if (fileMode == "subtitle") "sub_" else ""
+        val savedMode = navPrefs.getString("${prefix}mode", null)
+        android.util.Log.d("BrowserNav", "RESTORE: savedMode=$savedMode prefix=$prefix")
+        if (savedMode == null) { showRoot(); return }
+
+        try {
+            when (BrowseMode.valueOf(savedMode)) {
+                BrowseMode.LOCAL_FILES -> {
+                    val path = navPrefs.getString("${prefix}local_path", null)
+                    if (path != null && File(path).isDirectory) {
+                        browseLocalFiles(path)
+                    } else showRoot()
+                }
+                BrowseMode.NETWORK_SERVERS -> showNetworkServers()
+                BrowseMode.SMB_SHARES -> {
+                    val server = navPrefs.getString("${prefix}smb_server", null)
+                    if (server != null) {
+                        currentUser = navPrefs.getString("${prefix}smb_user", "") ?: ""
+                        currentPass = navPrefs.getString("${prefix}smb_pass", "") ?: ""
+                        connectToServer(server)
+                    } else showRoot()
+                }
+                BrowseMode.SMB_FILES -> {
+                    val server = navPrefs.getString("${prefix}smb_server", null)
+                    val share = navPrefs.getString("${prefix}smb_share", null)
+                    val path = navPrefs.getString("${prefix}smb_path", null)
+                    if (server != null && share != null) {
+                        currentUser = navPrefs.getString("${prefix}smb_user", "") ?: ""
+                        currentPass = navPrefs.getString("${prefix}smb_pass", "") ?: ""
+                        currentServer = server
+                        browseMode = BrowseMode.SMB_FILES
+                        items.clear(); adapter.notifyDataSetChanged()
+                        btnBack.visibility = View.VISIBLE; btnAddServer.visibility = View.GONE
+                        tvTitle.text = "Reconnecting..."
+                        tvSubtitle.visibility = View.GONE
+                        progressBar.visibility = View.VISIBLE
+                        executor.execute {
+                            try {
+                                disconnectSmb()
+                                smbClient = SMBClient(SmbConfig.builder().withTimeout(10, TimeUnit.SECONDS).build())
+                                val ip = try { InetAddress.getByName(server).hostAddress ?: server } catch (_: Exception) { server }
+                                val conn = smbClient!!.connect(ip)
+                                val auth = if (currentUser.isNotEmpty()) AuthenticationContext(currentUser, currentPass.toCharArray(), "") else AuthenticationContext.guest()
+                                smbSession = try { conn.authenticate(auth) } catch (_: Exception) {
+                                    conn.authenticate(AuthenticationContext.anonymous())
+                                }
+                                diskShare = smbSession!!.connectShare(share) as DiskShare
+                                currentShareName = share
+                                listSmbDir(path ?: "")
+                            } catch (_: Exception) {
+                                runOnUiThread { showRoot() }
+                            }
+                        }
+                    } else showRoot()
+                }
+                BrowseMode.ROOT -> showRoot()
+            }
+        } catch (_: Exception) { showRoot() }
+    }
+
     override fun onDestroy() { super.onDestroy(); stopNsdDiscovery(); disconnectSmb(); executor.shutdown() }
 
     // ── Adapter ──────────────────────────────────────────────────────

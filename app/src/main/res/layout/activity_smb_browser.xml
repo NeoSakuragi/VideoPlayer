@@ -49,6 +49,15 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Add server"
             android:focusable="true" />
+
+        <ImageButton
+            android:id="@+id/btnBrowserSettings"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@android:drawable/ic_menu_preferences"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Settings"
+            android:focusable="true" />
     </LinearLayout>
 
     <!-- Subtitle / path -->

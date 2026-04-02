@@ -1,6 +1,7 @@
 package com.videoplayer
 
 import android.app.Activity
+import java.io.File
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -31,13 +32,11 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
 
     private lateinit var playerView: MpvPlayerView
     private lateinit var subtitleOverlay: SubtitleOverlay
-    private lateinit var browseMode: View
     private lateinit var playMode: View
     private lateinit var pauseControls: LinearLayout
-    private lateinit var btnBrowse: MaterialButton
-    private lateinit var btnSettings: MaterialButton
     private lateinit var btnAudioTrack: MaterialButton
     private lateinit var btnSubtitleTrack: MaterialButton
+    private lateinit var btnPlaySettings: MaterialButton
     private lateinit var seekBar: SeekBar
     private lateinit var tvPosition: TextView
     private lateinit var tvDuration: TextView
@@ -87,15 +86,13 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
 
-        browseMode = findViewById(R.id.browseMode)
         playMode = findViewById(R.id.playMode)
         pauseControls = findViewById(R.id.pauseControls)
         playerView = findViewById(R.id.playerView)
         subtitleOverlay = findViewById(R.id.subtitleOverlay)
-        btnBrowse = findViewById(R.id.btnBrowse)
-        btnSettings = findViewById(R.id.btnSettings)
         btnAudioTrack = findViewById(R.id.btnAudioTrack)
         btnSubtitleTrack = findViewById(R.id.btnSubtitleTrack)
+        btnPlaySettings = findViewById(R.id.btnPlaySettings)
         seekBar = findViewById(R.id.seekBar)
         tvPosition = findViewById(R.id.tvPosition)
         tvDuration = findViewById(R.id.tvDuration)
@@ -154,14 +151,11 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
             }
         }
 
-        btnBrowse.setOnClickListener {
-            browserLauncher.launch(Intent(this, BrowserActivity::class.java))
-        }
-        btnSettings.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
         btnAudioTrack.setOnClickListener { showAudioTrackDialog() }
         btnSubtitleTrack.setOnClickListener { showSubtitleTrackDialog() }
+        btnPlaySettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
 
         // Add to Anki button in dict popup
         findViewById<MaterialButton>(R.id.btnAddToAnki).setOnClickListener {
@@ -232,21 +226,7 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
             source = try { dev.jdtech.mpv.MPVLib.getPropertyString("media-title") ?: "" } catch (_: Exception) { "" }
         )
 
-        // Capture screenshot
-        Thread {
-            val screenshotFile = mediaCapture.captureScreenshot()
-            currentCardData?.screenshotFile = screenshotFile
-            runOnUiThread {
-                if (screenshotFile != null && screenshotFile.exists()) {
-                    val bmp = BitmapFactory.decodeFile(screenshotFile.absolutePath)
-                    ccScreenshot.setImageBitmap(bmp)
-                } else {
-                    ccScreenshot.setImageDrawable(null)
-                }
-            }
-        }.start()
-
-        // Populate UI
+        // Populate UI immediately
         val card = currentCardData!!
         ccWord.text = card.word
         ccReading.text = if (card.reading != card.word) card.reading else ""
@@ -254,11 +234,45 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
         ccFrequency.visibility = if (card.frequency != null) View.VISIBLE else View.GONE
         ccMeaning.text = card.meaning
         ccSentence.text = card.sentence
+        ccScreenshot.setImageDrawable(null)
         updateAudioTimingDisplay()
 
         cardCreator.visibility = View.VISIBLE
         cardCreator.scrollTo(0, 0)
-        findViewById<MaterialButton>(R.id.ccBtnSend).requestFocus()
+
+        // Capture screenshot via PixelCopy (must be on main thread)
+        playerView.captureFrame { bitmap ->
+            if (bitmap != null) {
+                ccScreenshot.setImageBitmap(bitmap)
+                Thread {
+                    val screenshotFile = mediaCapture.saveBitmap(bitmap)
+                    card.screenshotFile = screenshotFile
+                    Log.d(TAG, "Screenshot saved: ${screenshotFile?.length()} bytes")
+
+                    // Audio extraction in same background thread
+                    val sourceUrl = currentPlaybackUrl
+                    if (sourceUrl != null && (card.audioStartSec > 0 || card.audioEndSec > 0)) {
+                        card.audioFile = mediaCapture.extractAudio(sourceUrl, card.adjustedStart, card.adjustedEnd)
+                        Log.d(TAG, "Audio extracted: ${card.audioFile?.length()} bytes")
+                    }
+                    runOnUiThread {
+                        Toast.makeText(this, "Ready to send", Toast.LENGTH_SHORT).show()
+                        findViewById<MaterialButton>(R.id.ccBtnSend).requestFocus()
+                    }
+                }.start()
+            } else {
+                Log.w(TAG, "PixelCopy failed")
+                Toast.makeText(this, "Screenshot failed", Toast.LENGTH_SHORT).show()
+                // Still try audio
+                Thread {
+                    val sourceUrl = currentPlaybackUrl
+                    if (sourceUrl != null && (card.audioStartSec > 0 || card.audioEndSec > 0)) {
+                        card.audioFile = mediaCapture.extractAudio(sourceUrl, card.adjustedStart, card.adjustedEnd)
+                    }
+                    runOnUiThread { findViewById<MaterialButton>(R.id.ccBtnSend).requestFocus() }
+                }.start()
+            }
+        }
     }
 
     private fun adjustPadBefore(delta: Float) {
@@ -294,14 +308,6 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
 
         Thread {
             try {
-                // Extract audio if timing is available
-                if (card.audioStartSec > 0 || card.audioEndSec > 0) {
-                    val sourceUrl = currentPlaybackUrl
-                    if (sourceUrl != null) {
-                        card.audioFile = mediaCapture.extractAudio(sourceUrl, card.adjustedStart, card.adjustedEnd)
-                    }
-                }
-
                 val client = AnkiConnectClient(settings.ankiConnectUrl)
 
                 // Build fields map
@@ -396,16 +402,13 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
         dictPopup.hide()
         cardCreator.visibility = View.GONE
         exitFullscreen()
-        browseMode.visibility = View.VISIBLE
         playMode.visibility = View.GONE
-        btnBrowse.isFocusable = true
-        btnBrowse.isFocusableInTouchMode = true
-        btnBrowse.requestFocus()
+        // Launch browser
+        browserLauncher.launch(Intent(this, BrowserActivity::class.java))
     }
 
     private fun showPlayMode() {
         isPlaying = true
-        browseMode.visibility = View.GONE
         playMode.visibility = View.VISIBLE
         dictPopup.hide()
         cardCreator.visibility = View.GONE
@@ -579,6 +582,34 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
                     }
                     else -> playerView.setSubtitleTrack(tracks[which - 1].id)
                 }
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun showFontTypeDialog() {
+        val fonts = AppSettings.FONTS.entries.toList()
+        val names = fonts.map { it.value.displayName }.toTypedArray()
+        val selected = fonts.indexOfFirst { it.key == appSettings.fontKey }.coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("Subtitle Font")
+            .setSingleChoiceItems(names, selected) { dialog, which ->
+                appSettings.fontKey = fonts[which].key
+                subtitleOverlay.applySettings(appSettings)
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun showFontSizeDialog() {
+        val sizes = AppSettings.FONT_SIZES
+        val names = sizes.map { "${it}sp" }.toTypedArray()
+        val selected = sizes.indexOf(appSettings.fontSize).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("Subtitle Size")
+            .setSingleChoiceItems(names, selected) { dialog, which ->
+                appSettings.fontSize = sizes[which]
+                subtitleOverlay.applySettings(appSettings)
                 dialog.dismiss()
             }
             .setNegativeButton("Cancel", null).show()

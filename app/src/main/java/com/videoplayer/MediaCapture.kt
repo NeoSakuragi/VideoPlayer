@@ -1,18 +1,12 @@
 package com.videoplayer
 
 import android.content.Context
-import android.media.MediaCodec
-import android.media.MediaExtractor
-import android.media.MediaFormat
-import android.media.MediaMuxer
+import android.graphics.Bitmap
 import android.util.Log
 import dev.jdtech.mpv.MPVLib
 import java.io.File
-import java.nio.ByteBuffer
+import java.io.FileOutputStream
 
-/**
- * Captures screenshots and audio clips from the currently playing video.
- */
 class MediaCapture(private val context: Context) {
 
     companion object {
@@ -20,30 +14,24 @@ class MediaCapture(private val context: Context) {
     }
 
     /**
-     * Capture a screenshot of the current video frame via mpv.
-     * Returns the file path, or null on failure.
+     * Save a bitmap to a JPEG file in cache.
      */
-    fun captureScreenshot(): File? {
+    fun saveBitmap(bitmap: Bitmap): File? {
         return try {
             val file = File(context.cacheDir, "anki_screenshot_${System.currentTimeMillis()}.jpg")
-            MPVLib.command(arrayOf("screenshot-to-file", file.absolutePath, "video"))
-            if (file.exists() && file.length() > 0) {
-                Log.d(TAG, "Screenshot saved: ${file.absolutePath} (${file.length()} bytes)")
-                file
-            } else {
-                Log.w(TAG, "Screenshot file empty or missing")
-                null
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
             }
+            if (file.exists() && file.length() > 0) {
+                Log.d(TAG, "Screenshot saved: ${file.length()} bytes")
+                file
+            } else null
         } catch (e: Exception) {
-            Log.e(TAG, "Screenshot failed: ${e.message}")
+            Log.e(TAG, "Save bitmap failed: ${e.message}")
             null
         }
     }
 
-    /**
-     * Get current subtitle timing from mpv.
-     * Returns (startSec, endSec) or null if not available.
-     */
     fun getSubtitleTiming(): Pair<Double, Double>? {
         return try {
             val start = MPVLib.getPropertyDouble("sub-start") ?: return null
@@ -55,88 +43,57 @@ class MediaCapture(private val context: Context) {
         }
     }
 
-    /**
-     * Extract an audio clip from a media file between startSec and endSec.
-     * Uses Android's MediaExtractor + MediaMuxer.
-     * @param sourceUrl The URL or file path of the source media
-     * @param startSec Start time in seconds
-     * @param endSec End time in seconds
-     * @return The output audio file, or null on failure
-     */
     fun extractAudio(sourceUrl: String, startSec: Double, endSec: Double): File? {
-        val outFile = File(context.cacheDir, "anki_audio_${System.currentTimeMillis()}.mp3")
-
+        val outFile = File(context.cacheDir, "anki_audio_${System.currentTimeMillis()}.m4a")
         return try {
-            val extractor = MediaExtractor()
-            extractor.setDataSource(sourceUrl)
+            val extractor = android.media.MediaExtractor()
+            if (sourceUrl.startsWith("http")) {
+                extractor.setDataSource(sourceUrl, mapOf<String, String>())
+            } else {
+                extractor.setDataSource(sourceUrl.removePrefix("file://"))
+            }
 
-            // Find audio track
             var audioTrackIndex = -1
             for (i in 0 until extractor.trackCount) {
                 val format = extractor.getTrackFormat(i)
-                val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
-                if (mime.startsWith("audio/")) {
-                    audioTrackIndex = i
-                    break
-                }
+                val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: continue
+                if (mime.startsWith("audio/")) { audioTrackIndex = i; break }
             }
-
-            if (audioTrackIndex < 0) {
-                Log.w(TAG, "No audio track found")
-                extractor.release()
-                return null
-            }
+            if (audioTrackIndex < 0) { extractor.release(); return null }
 
             extractor.selectTrack(audioTrackIndex)
             val audioFormat = extractor.getTrackFormat(audioTrackIndex)
-
             val startUs = (startSec * 1_000_000).toLong()
             val endUs = (endSec * 1_000_000).toLong()
+            extractor.seekTo(startUs, android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC)
 
-            // Seek to start
-            extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-
-            val muxer = MediaMuxer(outFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-            val muxerTrackIndex = muxer.addTrack(audioFormat)
+            val muxer = android.media.MediaMuxer(outFile.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val muxerTrack = muxer.addTrack(audioFormat)
             muxer.start()
 
-            val buffer = ByteBuffer.allocate(1024 * 1024)
-            val bufferInfo = MediaCodec.BufferInfo()
-
+            val buffer = java.nio.ByteBuffer.allocate(1024 * 1024)
+            val info = android.media.MediaCodec.BufferInfo()
             while (true) {
-                val sampleSize = extractor.readSampleData(buffer, 0)
-                if (sampleSize < 0) break
-
-                val sampleTime = extractor.sampleTime
-                if (sampleTime > endUs) break
-
-                if (sampleTime >= startUs) {
-                    bufferInfo.offset = 0
-                    bufferInfo.size = sampleSize
-                    bufferInfo.presentationTimeUs = sampleTime - startUs
-                    bufferInfo.flags = extractor.sampleFlags
-                    muxer.writeSampleData(muxerTrackIndex, buffer, bufferInfo)
+                val size = extractor.readSampleData(buffer, 0)
+                if (size < 0) break
+                val time = extractor.sampleTime
+                if (time > endUs) break
+                if (time >= startUs) {
+                    info.offset = 0; info.size = size
+                    info.presentationTimeUs = time - startUs
+                    info.flags = extractor.sampleFlags
+                    muxer.writeSampleData(muxerTrack, buffer, info)
                 }
-
                 extractor.advance()
             }
+            muxer.stop(); muxer.release(); extractor.release()
 
-            muxer.stop()
-            muxer.release()
-            extractor.release()
-
-            if (outFile.exists() && outFile.length() > 0) {
-                Log.d(TAG, "Audio extracted: ${outFile.absolutePath} (${outFile.length()} bytes)")
-                // Rename to .mp4 since MediaMuxer outputs MPEG4 container
-                val mp4File = File(outFile.absolutePath.replace(".mp3", ".mp4"))
-                outFile.renameTo(mp4File)
-                mp4File
-            } else {
-                Log.w(TAG, "Audio extraction produced empty file")
-                null
-            }
+            if (outFile.exists() && outFile.length() > 100) {
+                Log.d(TAG, "Audio extracted: ${outFile.length()} bytes")
+                outFile
+            } else { Log.w(TAG, "Audio empty"); null }
         } catch (e: Exception) {
-            Log.e(TAG, "Audio extraction failed: ${e.message}", e)
+            Log.w(TAG, "Audio extraction failed: ${e.message}")
             null
         }
     }

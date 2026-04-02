@@ -1,10 +1,14 @@
 package com.videoplayer
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import dev.jdtech.mpv.MPVLib
@@ -134,6 +138,23 @@ class MpvPlayerView @JvmOverloads constructor(
 
     fun stop() {
         try { MPVLib.command(arrayOf("stop")) } catch (_: Exception) {}
+    }
+
+    /**
+     * Capture the current frame via Android's PixelCopy API.
+     * Must be called from the main thread.
+     */
+    fun captureFrame(callback: (Bitmap?) -> Unit) {
+        if (!surfaceReady) { callback(null); return }
+        try {
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            PixelCopy.request(this, bitmap, { result ->
+                callback(if (result == PixelCopy.SUCCESS) bitmap else null)
+            }, Handler(Looper.getMainLooper()))
+        } catch (e: Exception) {
+            Log.e(TAG, "PixelCopy failed: ${e.message}")
+            callback(null)
+        }
     }
 
     // ── Track management ─────────────────────────────────────────────
