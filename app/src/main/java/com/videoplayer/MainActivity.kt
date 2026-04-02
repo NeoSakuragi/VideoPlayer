@@ -400,6 +400,7 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
         isPlaying = false
         isLoadingSmb = false
         playerView.stop()
+        playerView.reinitialize()
         smbStreamServer.stop()
         dictPopup.hide()
         cardCreator.visibility = View.GONE

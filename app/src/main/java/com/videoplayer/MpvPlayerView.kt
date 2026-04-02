@@ -144,6 +144,11 @@ class MpvPlayerView @JvmOverloads constructor(
         try { MPVLib.command(arrayOf("stop")) } catch (_: Exception) {}
     }
 
+    fun reinitialize() {
+        destroy()
+        initialize()
+    }
+
     /**
      * Capture the current frame via Android's PixelCopy API.
      * Must be called from the main thread.
