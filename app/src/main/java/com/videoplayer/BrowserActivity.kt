@@ -175,8 +175,21 @@ class BrowserActivity : AppCompatActivity() {
     // ── Local files ──────────────────────────────────────────────────
 
     private fun openLocalFiles() {
-        if (Build.VERSION.SDK_INT >= 33 ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+        if (Build.VERSION.SDK_INT >= 30) {
+            // Android 11+: need MANAGE_EXTERNAL_STORAGE for full file browsing
+            if (Environment.isExternalStorageManager()) {
+                browseLocalFiles(Environment.getExternalStorageDirectory().absolutePath)
+            } else {
+                try {
+                    startActivity(android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        android.net.Uri.parse("package:$packageName")
+                    ))
+                } catch (_: Exception) {
+                    startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                }
+            }
+        } else if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
             browseLocalFiles(Environment.getExternalStorageDirectory().absolutePath)
         } else {
             storagePermLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
