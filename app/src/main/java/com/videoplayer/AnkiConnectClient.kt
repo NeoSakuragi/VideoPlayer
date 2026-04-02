@@ -29,8 +29,8 @@ class AnkiConnectClient(private val baseUrl: String) {
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
-            conn.connectTimeout = 5000
-            conn.readTimeout = 10000
+            conn.connectTimeout = 10000
+            conn.readTimeout = 30000
             conn.doOutput = true
 
             conn.outputStream.use { it.write(body.toString().toByteArray()) }
@@ -39,6 +39,7 @@ class AnkiConnectClient(private val baseUrl: String) {
             val response = conn.inputStream.bufferedReader().readText()
             conn.disconnect()
 
+            Log.d(TAG, "$action response ($responseCode): $response")
             val json = JSONObject(response)
             val error = json.opt("error")
             if (error != null && error != JSONObject.NULL) {

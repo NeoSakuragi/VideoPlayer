@@ -332,6 +332,12 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
                 val screenshotField = settings.getFieldMapping("field_screenshot")
                 val audioField = settings.getFieldMapping("field_audio")
 
+                Log.d(TAG, "Sending to Anki: deck=${settings.ankiDeck} model=${settings.ankiNoteType}")
+                Log.d(TAG, "  fields=$fields")
+                Log.d(TAG, "  screenshot=${card.screenshotFile?.let { "${it.name} ${it.length()}b exists=${it.exists()}" }}")
+                Log.d(TAG, "  audio=${card.audioFile?.let { "${it.name} ${it.length()}b exists=${it.exists()}" }}")
+                Log.d(TAG, "  screenshotField=$screenshotField audioField=$audioField")
+
                 val result = client.addNote(
                     deckName = settings.ankiDeck,
                     modelName = settings.ankiNoteType,
