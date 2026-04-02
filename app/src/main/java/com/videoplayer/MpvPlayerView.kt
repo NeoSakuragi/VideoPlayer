@@ -80,6 +80,7 @@ class MpvPlayerView @JvmOverloads constructor(
             MPVLib.setOptionString("sub-visibility", "no")
             MPVLib.setOptionString("keep-open", "yes")
             MPVLib.setOptionString("save-position-on-quit", "no")
+            MPVLib.setOptionString("vd-lavc-dr", "no")
             // Fallbacks for older GPUs
             MPVLib.setOptionString("gpu-shader-cache-dir", context.cacheDir.absolutePath)
             MPVLib.setOptionString("gpu-sw", "yes") // allow software fallback

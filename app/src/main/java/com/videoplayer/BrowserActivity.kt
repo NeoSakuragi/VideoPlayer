@@ -216,6 +216,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun selectLocalFile(fileName: String) {
+        saveNavState() // save current folder so we return here next time
         val uri = Uri.fromFile(File(currentPath, fileName))
         setResult(Activity.RESULT_OK, Intent().apply {
             putExtra(RESULT_MODE, "local")
@@ -389,6 +390,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun selectSmbFile(fileName: String) {
+        saveNavState() // save current folder so we return here next time
         val fp = if (currentPath.isEmpty()) fileName else "$currentPath\\$fileName"
         setResult(Activity.RESULT_OK, Intent().apply {
             putExtra(RESULT_MODE, "smb")
@@ -501,16 +503,18 @@ class BrowserActivity : AppCompatActivity() {
                 BrowseMode.SMB_FILES -> {
                     val server = navPrefs.getString("${prefix}smb_server", null)
                     val share = navPrefs.getString("${prefix}smb_share", null)
-                    val path = navPrefs.getString("${prefix}smb_path", null)
+                    val smbPath = navPrefs.getString("${prefix}smb_path", null)
                     if (server != null && share != null) {
                         currentUser = navPrefs.getString("${prefix}smb_user", "") ?: ""
                         currentPass = navPrefs.getString("${prefix}smb_pass", "") ?: ""
                         currentServer = server
+                        currentShareName = share
                         browseMode = BrowseMode.SMB_FILES
                         items.clear(); adapter.notifyDataSetChanged()
                         btnBack.visibility = View.VISIBLE; btnAddServer.visibility = View.GONE
-                        tvTitle.text = "Reconnecting..."
-                        tvSubtitle.visibility = View.GONE
+                        tvTitle.text = if (smbPath.isNullOrEmpty()) share else smbPath.substringAfterLast("\\")
+                        tvSubtitle.text = "Reconnecting to $server..."
+                        tvSubtitle.visibility = View.VISIBLE
                         progressBar.visibility = View.VISIBLE
                         executor.execute {
                             try {
@@ -520,12 +524,13 @@ class BrowserActivity : AppCompatActivity() {
                                 val conn = smbClient!!.connect(ip)
                                 val auth = if (currentUser.isNotEmpty()) AuthenticationContext(currentUser, currentPass.toCharArray(), "") else AuthenticationContext.guest()
                                 smbSession = try { conn.authenticate(auth) } catch (_: Exception) {
-                                    conn.authenticate(AuthenticationContext.anonymous())
+                                    try { conn.authenticate(AuthenticationContext.anonymous()) } catch (_: Exception) { null }
                                 }
+                                if (smbSession == null) { runOnUiThread { showRoot() }; return@execute }
                                 diskShare = smbSession!!.connectShare(share) as DiskShare
-                                currentShareName = share
-                                listSmbDir(path ?: "")
-                            } catch (_: Exception) {
+                                listSmbDir(smbPath ?: "")
+                            } catch (e: Exception) {
+                                android.util.Log.w("BrowserNav", "Restore failed: ${e.message}")
                                 runOnUiThread { showRoot() }
                             }
                         }
