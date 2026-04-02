@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
     private lateinit var mediaCapture: MediaCapture
 
     private var isPlaying = false
+    private var isLoadingSmb = false
     private val smbStreamServer = SmbStreamServer()
     private var currentPlaybackUrl: String? = null
     private var currentCardData: CardData? = null
@@ -397,6 +398,7 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
 
     private fun showBrowseMode() {
         isPlaying = false
+        isLoadingSmb = false
         playerView.stop()
         smbStreamServer.stop()
         dictPopup.hide()
@@ -489,6 +491,8 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
                 playFile(uriStr)
             }
             "smb" -> {
+                if (isLoadingSmb) return
+                isLoadingSmb = true
                 val server = data.getStringExtra(BrowserActivity.RESULT_SMB_SERVER) ?: return
                 val share = data.getStringExtra(BrowserActivity.RESULT_SMB_SHARE) ?: return
                 val path = data.getStringExtra(BrowserActivity.RESULT_SMB_PATH) ?: return
@@ -500,10 +504,14 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
                         val httpUrl = smbStreamServer.start(server, share, path, user, pass)
                         Log.d(TAG, "SMB proxy: $httpUrl")
                         currentPlaybackUrl = httpUrl
-                        runOnUiThread { playerView.loadFile(httpUrl) }
+                        runOnUiThread {
+                            isLoadingSmb = false
+                            playerView.loadFile(httpUrl)
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "SMB connect failed: ${e.message}")
                         runOnUiThread {
+                            isLoadingSmb = false
                             Toast.makeText(this, "SMB error: ${e.message}", Toast.LENGTH_LONG).show()
                             showBrowseMode()
                         }
