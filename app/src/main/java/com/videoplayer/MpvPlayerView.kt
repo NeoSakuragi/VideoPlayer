@@ -71,6 +71,7 @@ class MpvPlayerView @JvmOverloads constructor(
             MPVLib.setOptionString("vo", "gpu")
             MPVLib.setOptionString("gpu-context", "android")
             MPVLib.setOptionString("opengl-es", "yes")
+            MPVLib.setOptionString("gpu-dumb-mode", "yes")
             MPVLib.setOptionString("ao", "audiotrack,opensles")
             val hwdec = if (AppSettings(context).hardwareDecoding) "mediacodec-copy,no" else "no"
             MPVLib.setOptionString("hwdec", hwdec)
@@ -113,9 +114,11 @@ class MpvPlayerView @JvmOverloads constructor(
             pendingFile = path
             return
         }
-        // Re-enable video output in case it was set to null
+        // Reset state for new file
         try {
             MPVLib.setPropertyString("vo", "gpu")
+            MPVLib.setPropertyString("sid", "auto")
+            MPVLib.setPropertyString("aid", "auto")
         } catch (_: Exception) {}
         Log.d(TAG, "loadFile: $path")
         try {
