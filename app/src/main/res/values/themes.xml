@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.VideoPlayer" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#BB86FC</item>
+        <item name="colorOnPrimary">#000000</item>
+        <item name="colorSecondary">#03DAC5</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+    </style>
+
+    <style name="Theme.VideoPlayer.BottomSheet" parent="Theme.Material3.DayNight.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.VideoPlayer.BottomSheet</item>
+        <item name="android:backgroundDimAmount">0.2</item>
+    </style>
+
+    <style name="Widget.VideoPlayer.BottomSheet" parent="Widget.Material3.BottomSheet">
+        <item name="backgroundTint">#E8222222</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.VideoPlayer.BottomSheet</item>
+    </style>
+
+    <style name="ShapeAppearance.VideoPlayer.BottomSheet" parent="">
+        <item name="cornerSizeTopLeft">16dp</item>
+        <item name="cornerSizeTopRight">16dp</item>
+    </style>
+</resources>
