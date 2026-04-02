@@ -126,6 +126,14 @@ class BrowserActivity : AppCompatActivity() {
         fileMode = intent.getStringExtra(EXTRA_FILE_MODE) ?: "video"
         fileExtensions = if (fileMode == "subtitle") SUBTITLE_EXTENSIONS else VIDEO_EXTENSIONS
 
+        // Load background image
+        try {
+            val bgStream = assets.open("browser_bg.png")
+            val bgBitmap = android.graphics.BitmapFactory.decodeStream(bgStream)
+            bgStream.close()
+            findViewById<android.widget.ImageView>(R.id.bgImage).setImageBitmap(bgBitmap)
+        } catch (_: Exception) {}
+
         tvTitle = findViewById(R.id.tvTitle)
         tvSubtitle = findViewById(R.id.tvSubtitle)
         btnBack = findViewById(R.id.btnBack)
