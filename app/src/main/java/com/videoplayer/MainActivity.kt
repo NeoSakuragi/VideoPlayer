@@ -551,7 +551,7 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
     private fun showAudioTrackDialog() {
         val tracks = playerView.getTracks().filter { it.type == "audio" }
         if (tracks.isEmpty()) return
-        val currentAid = try { dev.jdtech.mpv.MPVLib.getPropertyInt("aid") } catch (_: Exception) { 0 }
+        val currentAid = try { dev.jdtech.mpv.MPVLib.getPropertyInt("aid") ?: 0 } catch (_: Exception) { 0 }
         val names = tracks.map { t ->
             buildString {
                 append(t.title ?: t.lang?.uppercase() ?: "Track ${t.id}")
@@ -573,7 +573,7 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
         val names = mutableListOf("Off")
         names.addAll(tracks.map { t -> t.title ?: t.lang?.uppercase() ?: "Track ${t.id}" })
         names.add("Load external file...")
-        val currentSid = try { dev.jdtech.mpv.MPVLib.getPropertyInt("sid") } catch (_: Exception) { 0 }
+        val currentSid = try { dev.jdtech.mpv.MPVLib.getPropertyInt("sid") ?: 0 } catch (_: Exception) { 0 }
         val selected = if (currentSid <= 0) 0 else {
             val idx = tracks.indexOfFirst { it.id == currentSid }
             if (idx >= 0) idx + 1 else 0
