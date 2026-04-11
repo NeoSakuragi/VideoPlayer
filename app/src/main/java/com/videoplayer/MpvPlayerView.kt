@@ -1,6 +1,8 @@
 package com.videoplayer
 
 import android.content.Context
+import android.content.res.Configuration
+import android.app.UiModeManager
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
@@ -37,6 +39,7 @@ class MpvPlayerView @JvmOverloads constructor(
     private var initialized = false
     private var surfaceReady = false
     private var pendingFile: String? = null
+    private var fileLoaded = false
 
     var onTapInterceptor: (() -> Boolean)? = null
 
@@ -61,8 +64,14 @@ class MpvPlayerView @JvmOverloads constructor(
 
     fun setListener(l: Listener) { listener = l }
 
+    private fun isTvDevice(): Boolean {
+        val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+        return uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    }
+
     fun initialize() {
         if (initialized) return
+        holder.removeCallback(this)
         holder.addCallback(this)
 
         try {
@@ -73,7 +82,9 @@ class MpvPlayerView @JvmOverloads constructor(
             MPVLib.setOptionString("opengl-es", "yes")
             MPVLib.setOptionString("gpu-dumb-mode", "yes")
             MPVLib.setOptionString("ao", "audiotrack,opensles")
-            val hwdec = if (AppSettings(context).hardwareDecoding) "mediacodec-copy,no" else "no"
+            val isTv = isTvDevice()
+            val hwdec = if (isTv || AppSettings(context).hardwareDecoding) "mediacodec-copy,mediacodec,no" else "no"
+            Log.d(TAG, "Device isTv=$isTv, hwdec=$hwdec")
             MPVLib.setOptionString("hwdec", hwdec)
             MPVLib.setOptionString("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
             MPVLib.setOptionString("force-window", "no")
@@ -85,6 +96,8 @@ class MpvPlayerView @JvmOverloads constructor(
             // Fallbacks for older GPUs
             MPVLib.setOptionString("gpu-shader-cache-dir", context.cacheDir.absolutePath)
             MPVLib.setOptionString("gpu-sw", "yes") // allow software fallback
+            // Log mpv messages for diagnostics
+            MPVLib.setOptionString("msg-level", "all=v")
             MPVLib.init()
         } catch (e: Exception) {
             Log.e(TAG, "mpv init failed: ${e.message}", e)
@@ -114,13 +127,14 @@ class MpvPlayerView @JvmOverloads constructor(
             pendingFile = path
             return
         }
+        fileLoaded = false
         // Reset state for new file
         try {
             MPVLib.setPropertyString("vo", "gpu")
             MPVLib.setPropertyString("sid", "auto")
             MPVLib.setPropertyString("aid", "auto")
         } catch (_: Exception) {}
-        Log.d(TAG, "loadFile: $path")
+        Log.d(TAG, "loadFile: $path (surfaceReady=$surfaceReady)")
         try {
             MPVLib.command(arrayOf("loadfile", path))
         } catch (e: Exception) {
@@ -253,8 +267,21 @@ class MpvPlayerView @JvmOverloads constructor(
 
     override fun event(eventId: Int) {
         when (eventId) {
-            MPVLib.MPV_EVENT_FILE_LOADED -> post { listener?.onFileLoaded() }
-            MPVLib.MPV_EVENT_END_FILE -> post { listener?.onFileEnded() }
+            MPVLib.MPV_EVENT_FILE_LOADED -> {
+                fileLoaded = true
+                Log.d(TAG, "MPV_EVENT_FILE_LOADED")
+                post { listener?.onFileLoaded() }
+            }
+            MPVLib.MPV_EVENT_END_FILE -> {
+                if (fileLoaded) {
+                    fileLoaded = false
+                    Log.d(TAG, "MPV_EVENT_END_FILE (normal)")
+                    post { listener?.onFileEnded() }
+                } else {
+                    Log.e(TAG, "MPV_EVENT_END_FILE without FILE_LOADED — playback failed")
+                    post { listener?.onError("Playback failed — file could not be played") }
+                }
+            }
         }
     }
 
@@ -265,5 +292,7 @@ class MpvPlayerView @JvmOverloads constructor(
         try { MPVLib.removeObserver(this) } catch (_: Exception) {}
         try { MPVLib.destroy() } catch (_: Exception) {}
         initialized = false
+        surfaceReady = false
+        fileLoaded = false
     }
 }

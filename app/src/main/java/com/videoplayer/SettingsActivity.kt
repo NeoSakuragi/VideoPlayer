@@ -1,18 +1,23 @@
 package com.videoplayer
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.button.MaterialButton
 
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var settings: AppSettings
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,6 +28,7 @@ class SettingsActivity : AppCompatActivity() {
 
         setupSubtitleSettings()
         setupPlaybackSettings()
+        setupDictionaries()
         setupAnkiSettings()
         setupFieldMappings()
     }
@@ -203,6 +209,89 @@ class SettingsActivity : AppCompatActivity() {
                         }
                     }
                 }.start()
+            }
+
+            container.addView(row)
+        }
+    }
+
+    private fun setupDictionaries() {
+        val container = findViewById<LinearLayout>(R.id.dictionariesContainer)
+        container.removeAllViews()
+
+        val dictDb = DictionaryDatabase.getInstance(this)
+        val installed = dictDb.getInstalledDicts()
+        val downloader = DictionaryDownloader(this)
+
+        for (entry in DictionaryCatalog.entries) {
+            val row = layoutInflater.inflate(R.layout.item_dictionary, container, false)
+            val tvName = row.findViewById<TextView>(R.id.tvDictName)
+            val tvDesc = row.findViewById<TextView>(R.id.tvDictDesc)
+            val tvSize = row.findViewById<TextView>(R.id.tvDictSize)
+            val tvStatus = row.findViewById<TextView>(R.id.tvDictStatus)
+            val progress = row.findViewById<ProgressBar>(R.id.dictProgress)
+            val btnAction = row.findViewById<MaterialButton>(R.id.btnDictAction)
+
+            tvName.text = entry.name
+            tvDesc.text = entry.description
+            tvSize.text = if (entry.sizeMb >= 1f) "%.0f MB".format(entry.sizeMb) else "%.1f MB".format(entry.sizeMb)
+
+            val isInstalled = installed.contains(entry.id)
+
+            if (isInstalled) {
+                btnAction.text = "Delete"
+                btnAction.setBackgroundColor(0xFF442222.toInt())
+            } else {
+                btnAction.text = "Download"
+            }
+
+            btnAction.setOnClickListener {
+                if (installed.contains(entry.id) || dictDb.getInstalledDicts().contains(entry.id)) {
+                    // Delete
+                    AlertDialog.Builder(this)
+                        .setTitle("Delete ${entry.name}?")
+                        .setMessage("This will remove the dictionary data.")
+                        .setPositiveButton("Delete") { _, _ ->
+                            Thread {
+                                dictDb.deleteDictionary(entry.id)
+                                mainHandler.post { setupDictionaries() }
+                            }.start()
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                } else {
+                    // Download
+                    btnAction.isEnabled = false
+                    btnAction.text = "..."
+                    progress.visibility = View.VISIBLE
+                    tvStatus.visibility = View.VISIBLE
+                    tvStatus.text = "Starting..."
+
+                    downloader.download(entry, object : DictionaryDownloader.ProgressListener {
+                        override fun onProgress(phase: String, percent: Int) {
+                            mainHandler.post {
+                                tvStatus.text = phase
+                                progress.progress = percent
+                            }
+                        }
+
+                        override fun onComplete(success: Boolean, message: String) {
+                            mainHandler.post {
+                                progress.visibility = View.GONE
+                                if (success) {
+                                    tvStatus.text = message
+                                    Toast.makeText(this@SettingsActivity, "${entry.name} installed", Toast.LENGTH_SHORT).show()
+                                    setupDictionaries()
+                                } else {
+                                    tvStatus.text = "Failed: $message"
+                                    tvStatus.setTextColor(0xFFFF5555.toInt())
+                                    btnAction.isEnabled = true
+                                    btnAction.text = "Retry"
+                                }
+                            }
+                        }
+                    })
+                }
             }
 
             container.addView(row)

@@ -3,6 +3,7 @@ package com.videoplayer
 import android.view.View
 import android.widget.ScrollView
 import android.widget.TextView
+import org.json.JSONObject
 
 class DictionaryPopup(
     private val popupView: ScrollView,
@@ -10,10 +11,15 @@ class DictionaryPopup(
     private val tvReading: TextView,
     private val tvFreq: TextView,
     private val tvTags: TextView,
-    private val tvMeanings: TextView
+    private val tvMeanings: TextView,
+    private val tvPitch: TextView? = null
 ) {
 
-    fun show(entries: List<DictionaryDatabase.DictEntry>, surface: String) {
+    fun show(
+        entries: List<DictionaryDatabase.DictEntry>,
+        surface: String,
+        pitchAccents: List<DictionaryDatabase.PitchAccent> = emptyList()
+    ) {
         if (entries.isEmpty()) { hide(); return }
 
         val best = entries.first()
@@ -37,6 +43,14 @@ class DictionaryPopup(
             tvTags.visibility = View.GONE
         }
 
+        // Pitch accent
+        if (tvPitch != null && pitchAccents.isNotEmpty()) {
+            tvPitch.text = formatPitchAccents(pitchAccents)
+            tvPitch.visibility = View.VISIBLE
+        } else {
+            tvPitch?.visibility = View.GONE
+        }
+
         val allMeanings = entries.flatMap { it.meanings }
             .filter { it.isNotBlank() }
             .distinct()
@@ -46,6 +60,31 @@ class DictionaryPopup(
 
         popupView.visibility = View.VISIBLE
         popupView.scrollTo(0, 0)
+    }
+
+    private fun formatPitchAccents(accents: List<DictionaryDatabase.PitchAccent>): String {
+        return accents.mapNotNull { pa ->
+            try {
+                val json = JSONObject(pa.pitchData)
+                val reading = json.optString("reading", pa.term)
+                val pitches = json.optJSONArray("pitches") ?: return@mapNotNull null
+                val positions = mutableListOf<String>()
+                for (i in 0 until pitches.length()) {
+                    val p = pitches.getJSONObject(i)
+                    val pos = p.optInt("position", -1)
+                    if (pos >= 0) {
+                        val label = when (pos) {
+                            0 -> "heiban"
+                            1 -> "atamadaka"
+                            else -> "[$pos]"
+                        }
+                        positions.add(label)
+                    }
+                }
+                if (positions.isEmpty()) null
+                else "$reading: ${positions.joinToString(", ")}"
+            } catch (_: Exception) { null }
+        }.distinct().joinToString("  ")
     }
 
     fun hide() {

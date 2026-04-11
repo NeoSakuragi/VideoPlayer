@@ -98,6 +98,16 @@
                         android:visibility="gone" />
                 </LinearLayout>
 
+                <!-- Pitch accent -->
+                <TextView
+                    android:id="@+id/tvDictPitch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#CE93D8"
+                    android:textSize="12sp"
+                    android:layout_marginTop="4dp"
+                    android:visibility="gone" />
+
                 <!-- Meanings -->
                 <TextView
                     android:id="@+id/tvDictMeanings"

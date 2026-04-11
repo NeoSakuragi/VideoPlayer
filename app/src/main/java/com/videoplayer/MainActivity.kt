@@ -122,7 +122,8 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
             findViewById(R.id.tvDictReading),
             findViewById(R.id.tvDictFreq),
             findViewById(R.id.tvDictTags),
-            findViewById(R.id.tvDictMeanings)
+            findViewById(R.id.tvDictMeanings),
+            findViewById(R.id.tvDictPitch)
         )
         dictManager = DictionaryManager(this)
         dictManager.ensureReady { Log.d(TAG, "Dictionary ready") }
@@ -542,10 +543,16 @@ class MainActivity : AppCompatActivity(), MpvPlayerView.Listener {
             results.addAll(dictDb.lookup(baseForm))
             if (baseForm != surface) results.addAll(dictDb.lookup(surface))
             val unique = results.distinctBy { "${it.term}|${it.reading}" }
+
+            // Fetch pitch accent for the best match
+            val pitchAccents = mutableListOf<DictionaryDatabase.PitchAccent>()
+            pitchAccents.addAll(dictDb.lookupPitchAccent(baseForm))
+            if (baseForm != surface) pitchAccents.addAll(dictDb.lookupPitchAccent(surface))
+
             runOnUiThread {
                 if (unique.isNotEmpty()) {
                     currentDictEntries = unique
-                    dictPopup.show(unique, surface)
+                    dictPopup.show(unique, surface, pitchAccents)
                 } else {
                     Toast.makeText(this, "No entry for: $baseForm", Toast.LENGTH_SHORT).show()
                 }

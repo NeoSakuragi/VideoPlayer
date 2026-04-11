@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:gravity="center_vertical"
+    android:background="@drawable/focus_highlight"
+    android:focusable="true"
+    android:clickable="true">
+
+    <!-- Info column -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginEnd="12dp">
+
+        <TextView
+            android:id="@+id/tvDictName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#EEEEEE"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/tvDictDesc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#888888"
+            android:textSize="12sp"
+            android:layout_marginTop="2dp" />
+
+        <!-- Progress bar (hidden by default) -->
+        <ProgressBar
+            android:id="@+id/dictProgress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="6dp"
+            android:max="100"
+            android:visibility="gone"
+            android:progressTint="#7986CB"
+            android:progressBackgroundTint="#333333" />
+
+        <TextView
+            android:id="@+id/tvDictStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#7986CB"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Size label -->
+    <TextView
+        android:id="@+id/tvDictSize"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#666666"
+        android:textSize="11sp"
+        android:layout_marginEnd="12dp" />
+
+    <!-- Action button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnDictAction"
+        style="@style/Widget.Material3.Button.TonalButton"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:padding="0dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:minWidth="80dp"
+        android:minHeight="0dp"
+        android:text="Download"
+        android:textSize="12sp"
+        android:focusable="true" />
+</LinearLayout>
